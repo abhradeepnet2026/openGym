@@ -1,0 +1,40 @@
+# Render Blueprint: one native Node service serves both the Vite frontend and API.
+# No Docker required. A persistent disk is essential for passkeys, sessions, profiles and media.
+services:
+  - type: web
+    name: opengym-personal
+    runtime: node
+    plan: starter
+    region: singapore
+    buildCommand: npm ci --prefix frontend && npm run build --prefix frontend && npm ci --prefix api --omit=optional
+    startCommand: node api/server.js
+    healthCheckPath: /api/health
+    disk:
+      name: opengym-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /var/data
+      - key: WEB_ROOT
+        value: frontend/dist
+      - key: CATALOGUE_MEDIA_ROOT
+        value: catalogue/media
+      - key: INVITE_ONLY
+        value: "1"
+      - key: FIRST_USER_ADMIN
+        value: "1"
+      - key: MAX_USERS
+        value: "3"
+      - key: ALLOW_GUEST
+        value: "0"
+      - key: PASSWORD_LOGIN
+        value: "1"
+      - key: SESSION_DAYS
+        value: "30"
+      - key: MEDIA_UPLOADS
+        value: "1"
+      - key: MEDIA_MIN_FREE_MB
+        value: "64"

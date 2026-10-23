@@ -39,14 +39,16 @@ import { excusedOn, nudgeFor, nudgeWindowOpen, toneOf } from './nudge.js';
 
 const PORT = +(process.env.PORT || 3000);
 const DATA = process.env.DATA_DIR || '/data';
-const RP_ID = process.env.RP_ID || 'localhost';
-const ORIGIN = process.env.ORIGIN || 'http://localhost:8080';
+const RP_ID = process.env.RP_ID || process.env.RENDER_EXTERNAL_HOSTNAME || 'localhost';
+const ORIGIN = process.env.ORIGIN || process.env.RENDER_EXTERNAL_URL || 'http://localhost:8080';
 const RP_NAME = process.env.RP_NAME || 'openGym';
 // Admin dashboard (issue): admins are matched by uid (or the admin flag FIRST_USER_ADMIN sets);
 // INVITE_ONLY gates new signups behind a code the admin generates. Off by default, so a fresh
 // self-hosted instance stays open.
 const ADMIN_UIDS = (process.env.ADMIN_UIDS || '').split(',').map(s => s.trim()).filter(Boolean);
 const INVITE_ONLY = /^(1|true|yes|on)$/i.test(process.env.INVITE_ONLY || '');
+const MAX_USERS = Math.max(0, Math.floor(Number(process.env.MAX_USERS || 0)) || 0);
+const userLimitReached = () => MAX_USERS > 0 && db.users.length >= MAX_USERS;
 // The first profile made on an instance with no profiles at all becomes its admin (#328), so a
 // fresh install has someone who can open the admin dashboard without editing ADMIN_UIDS and
 // restarting. Stored on the user record (user.admin), which isAdmin already honours. It is
@@ -180,6 +182,21 @@ function saveDb() {
 // Flushed before and after the rename (durable.js): a host reset must not bring back the file
 // the client was told had been replaced.
 function atomicWrite(file, content, mode) { durableWrite(file, content, mode); }
+
+// A fresh invite-only instance needs one way to create its first owner. On a fresh install,
+// mint one high-entropy bootstrap invite and print it only to the private service logs. The
+// first successful registration claims owner/admin; later accounts must use admin-issued invites.
+// Reprinting an unused code on restart lets the operator recover it without opening registration.
+if (INVITE_ONLY && FIRST_USER_ADMIN && db.users.length === 0) {
+  let bootstrap = db.invites.find(i => i.note === 'First-owner bootstrap' && !i.usedBy && !i.revoked);
+  if (!bootstrap) {
+    bootstrap = { code: crypto.randomBytes(8).toString('hex').toUpperCase(),
+      note: 'First-owner bootstrap', createdBy: null, created: new Date().toISOString() };
+    db.invites.push(bootstrap);
+    saveDb();
+  }
+  console.warn('openGym first-owner invite code (private service logs): ' + bootstrap.code);
+}
 // How many earlier write ids a document keeps (`_wids`, see PUT /api/data): a device that last
 // synced more writes ago than this merges on its next pull instead of taking the server's copy.
 const WID_KEEP = 50;
@@ -1423,6 +1440,7 @@ const passwordRoutes = {
   // For browsers that cannot make a passkey at all: plain http on a LAN address, some Firefox
   // setups. Same invite rules as /api/register/*, checked again and burned after the hash.
   'POST /api/register/password': async (req, res) => {
+    if (userLimitReached()) return json(res, 403, { error: 'this instance has reached its account limit', code: 'user-limit' });
     const body = await readBody(req);
     const name = text(body.name).trim().slice(0, 40);
     if (!name) return json(res, 400, { error: 'name required', code: 'missing' });
@@ -1473,6 +1491,7 @@ const passwordRoutes = {
     }
     // No await from here to the push: nothing can take the address between this check and it.
     if (email && emailTaken(email)) return emailRefused();
+    if (userLimitReached()) return json(res, 403, { error: 'this instance has reached its account limit', code: 'user-limit' });
     const created = new Date().toISOString();
     const user = { id: crypto.randomBytes(12).toString('base64url'), name, created, pw: { h, set: created }, ...(email ? { email } : {}) };
     if (inv) { user.invitedBy = inv.code; inv.usedBy = user.id; inv.usedAt = created; }
@@ -2129,6 +2148,7 @@ const routes = {
   },
 
   'POST /api/register/options': async (req, res) => {
+    if (userLimitReached()) return json(res, 403, { error: 'this instance has reached its account limit', code: 'user-limit' });
     const body = await readBody(req);
     const name = text(body.name).trim().slice(0, 40);
     if (!name) return json(res, 400, { error: 'name required' });
@@ -2175,6 +2195,7 @@ const routes = {
       auditFail(req, 'auth.register.fail', { ok: false, name: c.name, msg: 'not-verified' });
       return json(res, 400, { error: 'not verified' });
     }
+    if (userLimitReached()) return json(res, 403, { error: 'this instance has reached its account limit', code: 'user-limit' });
     const { credential } = verification.registrationInfo;
     if (db.creds.find(x => x.id === credential.id)) {
       audit(req, 'auth.register.fail', { ok: false, name: c.name, msg: 'credential-exists' });
@@ -2939,7 +2960,64 @@ const server = http.createServer(async (req, res) => {
   const mm = /^\/api\/media\/([0-9a-f]{64})$/.exec(url.pathname);
   if (mm) { key = req.method + ' /api/media/{hash}'; req.mediaHash = mm[1]; }
   const handler = routes[key];
-  if (!handler) return json(res, 404, { error: 'not found' });
+  if (!handler) {
+    // Optional same-origin web hosting for Docker-free deployments. The same Node process
+    // serves the built Vite app and the API, preserving passkey origin checks and session cookies.
+    // Leave WEB_ROOT unset for the API-only container used by existing deployments.
+    if (!url.pathname.startsWith('/api/') && !url.pathname.startsWith('/api')) {
+      if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 404, { error: 'not found' });
+      const webRoot = process.env.WEB_ROOT ? path.resolve(process.env.WEB_ROOT) : '';
+      const mediaRoot = process.env.CATALOGUE_MEDIA_ROOT ? path.resolve(process.env.CATALOGUE_MEDIA_ROOT) : '';
+      let root = webRoot;
+      let relative = '';
+      const mediaMatch = /^\/exercise-media\/(still|clip)\/([^/]+)$/.exec(url.pathname);
+      if (mediaMatch && mediaRoot) {
+        root = path.resolve(mediaRoot, mediaMatch[1]);
+        try { relative = decodeURIComponent(mediaMatch[2]); } catch { return json(res, 400, { error: 'bad request' }); }
+        if (!/^\d{4,5}\.(?:webp|mp4)$/.test(relative) ||
+            (mediaMatch[1] === 'still' && !relative.endsWith('.webp')) ||
+            (mediaMatch[1] === 'clip' && !relative.endsWith('.mp4'))) {
+          return json(res, 404, { error: 'not found' });
+        }
+      } else if (webRoot) {
+        try { relative = decodeURIComponent(url.pathname.slice(1)); } catch { return json(res, 400, { error: 'bad request' }); }
+        if (!relative || url.pathname.endsWith('/')) relative = 'index.html';
+      }
+      if (root && relative && !relative.includes('\0')) {
+        const file = path.resolve(root, relative);
+        if (file.startsWith(root + path.sep) || file === path.join(root, 'index.html')) {
+          try {
+            const stat = fs.statSync(file);
+            if (stat.isFile()) {
+              const ext = path.extname(file).toLowerCase();
+              const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
+                '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
+                '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml',
+                '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg',
+                '.jpeg': 'image/jpeg', '.ico': 'image/x-icon', '.woff2': 'font/woff2',
+                '.mp4': 'video/mp4', '.webmanifest': 'application/manifest+json' };
+              res.writeHead(200, { 'Content-Type': types[ext] || 'application/octet-stream',
+                'Content-Length': stat.size, 'X-Content-Type-Options': 'nosniff',
+                ...(ext === '.html' ? { 'Cache-Control': 'no-cache' } : { 'Cache-Control': 'public, max-age=31536000, immutable' }) });
+              if (req.method === 'HEAD') return res.end();
+              return fs.createReadStream(file).pipe(res);
+            }
+          } catch (e) { if (e.code !== 'ENOENT' && e.code !== 'ENOTDIR') return json(res, 500, { error: 'web asset unavailable' }); }
+        }
+      }
+      if (webRoot && (url.pathname === '/' || !path.extname(url.pathname))) {
+        const index = path.join(webRoot, 'index.html');
+        try {
+          const stat = fs.statSync(index);
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': stat.size,
+            'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' });
+          if (req.method === 'HEAD') return res.end();
+          return fs.createReadStream(index).pipe(res);
+        } catch { /* fall through to the JSON 404 below */ }
+      }
+    }
+    return json(res, 404, { error: 'not found' });
+  }
   if (!csrfOk(req, key)) {
     // A Bearer that does not verify and no cookie beside it: nothing ambient is in play, the caller
     // is simply not signed in. That is the paired app once its token is revoked or expired, and it

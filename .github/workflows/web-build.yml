@@ -1,0 +1,108 @@
+name: Docker-free full-stack checks
+
+on:
+  pull_request:
+    paths:
+      - 'frontend/**'
+      - 'api/**'
+      - 'catalogue/media/**'
+      - 'render.yaml'
+      - '.node-version'
+      - '.github/workflows/web-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-free-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Run frontend tests
+        working-directory: frontend
+        run: npm test
+      - name: Build web bundle
+        working-directory: frontend
+        run: npm run build
+      - name: Check locale consistency
+        working-directory: frontend
+        run: node scripts/check-locales.mjs
+
+  api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - name: Install API dependencies without optional AI runtimes
+        working-directory: api
+        run: npm ci --omit=optional
+      - name: Run API and Coach tests
+        working-directory: api
+        run: npm test
+      - name: Verify API server JavaScript syntax
+        run: node --check api/server.js
+
+  native-web-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            api/package-lock.json
+      - name: Build the frontend
+        working-directory: frontend
+        run: npm ci && npm run build
+      - name: Install API dependencies
+        working-directory: api
+        run: npm ci --omit=optional
+      - name: Smoke-test same-origin web and API hosting
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DATA_DIR="$(mktemp -d)"
+          export WEB_ROOT="$GITHUB_WORKSPACE/frontend/dist"
+          export CATALOGUE_MEDIA_ROOT="$GITHUB_WORKSPACE/catalogue/media"
+          export ORIGIN="http://localhost:3000"
+          export RP_ID="localhost"
+          export PORT=3000
+          export INVITE_ONLY=1
+          export FIRST_USER_ADMIN=1
+          export ALLOW_GUEST=0
+          export MAX_USERS=3
+          printf '{"users":[{"id":"u1"},{"id":"u2"},{"id":"u3"}],"creds":[],"subs":[],"invites":[]}' > "$DATA_DIR/db.json"
+          node api/server.js >/tmp/opengym-native.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; rm -rf "$DATA_DIR"' EXIT
+          for attempt in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:3000/api/health >/dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3000/api/health >/dev/null
+          curl -fsS http://127.0.0.1:3000/ | grep -q '<div id="root">'
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:3000/)" = "404"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/not-a-route)" = "404"
+          signup_status="$(curl -s -o /tmp/signup-limit.json -w '%{http_code}' -H 'Origin: http://localhost:3000' -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:3000/api/register/options)"
+          test "$signup_status" = "403"
+          grep -q '"code":"user-limit"' /tmp/signup-limit.json
+          echo "Native web, API and three-account limit smoke test passed."
