@@ -15,6 +15,7 @@ Tracks evidence for `docs/PRD_PERSONAL_SUPABASE_DEPLOYMENT.md`. Do not mark a ph
 - [x] Confirm CI is green on PR head `a9a169985531f86127413db93a9cfb56daccc9ae`: `Tests` run 40012638963 and `Docker-free full-stack checks` run 40012638964 both completed successfully (2026-10-23 UTC).
 - [ ] Complete route-by-route runtime inventory and decide a deployable free Node-compatible host.
 - [ ] Capture a live health check from a direct HTTP-capable runtime and complete route inventory. GitHub/Render connectors do not provide a generic HTTP probe; do not count this as verified.
+- [x] Inspect REA's documented JavaScript-analysis workflow and assess fit; it requires local artifacts/runtime access and is not suitable as a production dependency.
 
 ### Verified findings (updated 2026-10-24)
 
@@ -36,6 +37,9 @@ Tracks evidence for `docs/PRD_PERSONAL_SUPABASE_DEPLOYMENT.md`. Do not mark a ph
 - Supabase security advisor reports informational `rls_enabled_no_policy` findings for all four tables. This matches the migration's server-only intent (no direct anon/authenticated grants), but must be checked again after backend integration; do not add broad client policies to silence the warning.
 - Render service remains on the free plan and latest deployment `dep-dbdre48u01pc73drde30` is `live`; deployed commit is `a9a1699`.
 
+- Render `/api/health` is implemented to probe writability of `DATA_DIR`, but a direct live HTTP request could not be verified via the connected tools. The Render service metadata confirms `plan=free`, no configured health-check path, and ephemeral `/tmp/opengym-data`; successful process boot does not establish data durability.
+- REA review: the official `morluto/rea` documentation describes local JavaScript/Electron artifact and runtime analysis. Its CLI expects a local checkout/artifact and its browser-observation path requires an explicitly configured local browser/CDP endpoint. It is not a deployed service dependency and cannot be connected to the Render process from this session; do not add it to production.
+
 ## Architecture decision gate
 
 Preferred direction is to preserve the current custom WebAuthn/password auth model initially, use Supabase Postgres + private Storage for durability, and run the API on a free Node-compatible runtime. The exact runtime is not selected until its current free-tier constraints and this API's compatibility are verified. Render stays as a temporary fallback until cutover succeeds.
@@ -48,8 +52,8 @@ Do not apply the schema or switch production writes until the adapter is integra
 - [x] Add revision-aware adapter interface for instance and per-user state.
 - [x] Add mocked unit tests for the adapter.
 - [x] Verify CI tests: PR-head runs 40012638963 and 40012638964 completed successfully.
-- [ ] Compare free Node-compatible hosting options and verify current limitations.
-- [ ] Inventory all routes and background jobs and identify Node-only requirements.
+- [ ] Compare free Node-compatible hosting options and verify current limitations, including always-on and writable-storage constraints.
+- [ ] Complete route inventory and background-job dependency mapping; confirmed current core dependencies include synchronous filesystem persistence and Coach config/jobs, so an async-store adapter alone is insufficient.
 - [ ] Decide how signing secrets, VAPID keys, audit logs, Coach jobs/config, and uploads will be persisted.
 - [ ] Update architecture record with the runtime decision and evidence.
 
@@ -66,7 +70,7 @@ Do not apply the schema or switch production writes until the adapter is integra
 
 ## Phase 4 — backend, frontend, deployment
 
-- [ ] Integrate async Supabase persistence safely; the current API assumes synchronous local-file reads/writes in many routes and cannot be switched by changing one helper.
+- [ ] Integrate async Supabase persistence safely; the current API assumes synchronous local-file reads/writes in many routes. A deliberate async refactor or repository/service layer is required before replacing it.
 - [ ] Migrate signing secrets and VAPID keys safely.
 - [ ] Migrate audit logs and Coach config/jobs or document approved alternatives.
 - [ ] Configure a free Node-compatible API host and free HTTPS static frontend hosting.
