@@ -2962,7 +2962,7 @@ const server = http.createServer(async (req, res) => {
         try { relative = decodeURIComponent(url.pathname.slice(1)); } catch { return json(res, 400, { error: 'bad request' }); }
         if (!relative || url.pathname.endsWith('/')) relative = 'index.html';
       }
-      if (root && relative && !relative.includes('\\0')) {
+      if (root && relative && !relative.includes('\0')) {
         const file = path.resolve(root, relative);
         if (file.startsWith(root + path.sep) || file === path.join(root, 'index.html')) {
           try {
