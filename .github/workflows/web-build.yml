@@ -58,3 +58,46 @@ jobs:
         run: npm test
       - name: Verify API server JavaScript syntax
         run: node --check api/server.js
+
+  native-web-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            api/package-lock.json
+      - name: Build the frontend
+        working-directory: frontend
+        run: npm ci && npm run build
+      - name: Install API dependencies
+        working-directory: api
+        run: npm ci --omit=optional
+      - name: Smoke-test same-origin web and API hosting
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DATA_DIR="$(mktemp -d)"
+          export WEB_ROOT="$GITHUB_WORKSPACE/frontend/dist"
+          export CATALOGUE_MEDIA_ROOT="$GITHUB_WORKSPACE/catalogue/media"
+          export ORIGIN="http://localhost:3000"
+          export RP_ID="localhost"
+          export PORT=3000
+          export INVITE_ONLY=1
+          export FIRST_USER_ADMIN=1
+          export ALLOW_GUEST=0
+          node api/server.js >/tmp/opengym-native.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; rm -rf "$DATA_DIR"' EXIT
+          for attempt in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:3000/api/health >/dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3000/api/health >/dev/null
+          curl -fsS http://127.0.0.1:3000/ | grep -q '<div id="root">'
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:3000/)" = "404"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/not-a-route)" = "404"
+          echo "Native web + API smoke test passed."
