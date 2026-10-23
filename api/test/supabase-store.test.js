@@ -79,3 +79,13 @@ test('does not leak database error bodies', async () => {
     return true;
   });
 });
+
+test('treats concurrent first writes as a clean conflict', async () => {
+  const store = new SupabaseStore({
+    url: 'https://example.supabase.co',
+    secretKey: 'server-secret',
+    fetchImpl: async () => response(409, { message: 'duplicate key' })
+  });
+  assert.equal(await store.compareAndSwapInstance(0, { users: [] }), false);
+  assert.equal(await store.compareAndSwapUserState('user-a', 0, { workouts: [] }), false);
+});
