@@ -89,6 +89,8 @@ jobs:
           export INVITE_ONLY=1
           export FIRST_USER_ADMIN=1
           export ALLOW_GUEST=0
+          export MAX_USERS=3
+          printf '{"users":[{"id":"u1"},{"id":"u2"},{"id":"u3"}],"creds":[],"subs":[],"invites":[]}' > "$DATA_DIR/db.json"
           node api/server.js >/tmp/opengym-native.log 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid" 2>/dev/null || true; rm -rf "$DATA_DIR"' EXIT
@@ -100,4 +102,7 @@ jobs:
           curl -fsS http://127.0.0.1:3000/ | grep -q '<div id="root">'
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:3000/)" = "404"
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/not-a-route)" = "404"
-          echo "Native web + API smoke test passed."
+          signup_status="$(curl -s -o /tmp/signup-limit.json -w '%{http_code}' -H 'Origin: http://localhost:3000' -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:3000/api/register/options)"
+          test "$signup_status" = "403"
+          grep -q '"code":"user-limit"' /tmp/signup-limit.json
+          echo "Native web, API and three-account limit smoke test passed."
