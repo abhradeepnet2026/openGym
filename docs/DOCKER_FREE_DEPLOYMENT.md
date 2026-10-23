@@ -10,7 +10,7 @@ This repository now includes a Render Blueprint at `render.yaml`. It builds the 
 2. In Render, create a Blueprint from that repository and review `render.yaml`.
 3. The blueprint uses a **paid Starter service with a persistent disk**. Do not change it to an ephemeral free instance: the existing API stores passkeys, session secrets, account records, workout state and uploads under `DATA_DIR`; losing that disk can lock users out and lose data.
 4. Wait for the build and health check at `/api/health` to pass.
-5. Open the service URL over HTTPS. The first profile is configured to become the owner/admin. Create invite codes in the app's admin area for the other two people.
+5. Open the service logs in Render and copy the generated **first-owner invite code** (it is printed only to private service logs while unused). Open the service URL over HTTPS and register the first profile with that code; it becomes owner/admin. Create invite codes in the app's admin area for the other two people.
 6. Set `OPENAI_API_KEY` as a secret in the host dashboard if using OpenAI-backed Coach features. Never put it in a `VITE_*` variable or commit it to Git.
 7. Configure any optional push/AI provider settings from the app's admin UI as needed.
 
