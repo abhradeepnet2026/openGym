@@ -85,7 +85,7 @@ export class SupabaseStore {
           });
       return rows.length > 0;
     } catch (error) {
-      if (error instanceof SupabaseStoreError && error.status === 409) return false;
+      if (error?.status === 409) return false;
       throw error;
     }
   }
@@ -120,7 +120,7 @@ export class SupabaseStore {
       return rows.length > 0;
     } catch (error) {
       // A competing first insert is an expected compare-and-swap miss, not an API failure.
-      if (error instanceof SupabaseStoreError && error.status === 409) return false;
+      if (error?.status === 409) return false;
       throw error;
     }
   }
