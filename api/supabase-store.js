@@ -77,11 +77,11 @@ export class SupabaseStore {
     try {
       const rows = expectedRevision === 0
         ? await this.request('gym_instance_store', { on_conflict: 'id' }, {
-            method: 'POST', body: row, prefer: 'return=representation'
+            method: 'POST', body: row, prefer: 'resolution=ignore-duplicates,return=representation'
           })
         : await this.request('gym_instance_store', { id: 'eq.1', revision: 'eq.' + expectedRevision }, {
             method: 'PATCH', body: { payload, revision: expectedRevision + 1, updated_at: row.updated_at },
-            prefer: 'return=representation'
+            prefer: 'resolution=ignore-duplicates,return=representation'
           });
       return rows.length > 0;
     } catch (error) {
@@ -110,12 +110,12 @@ export class SupabaseStore {
         ? await this.request('gym_user_state', { on_conflict: 'user_id' }, {
             method: 'POST',
             body: { user_id: userId, state, revision: 1, updated_at: updatedAt },
-            prefer: 'return=representation'
+            prefer: 'resolution=ignore-duplicates,return=representation'
           })
         : await this.request('gym_user_state', { user_id: 'eq.' + userId, revision: 'eq.' + expectedRevision }, {
             method: 'PATCH',
             body: { state, revision: expectedRevision + 1, updated_at: updatedAt },
-            prefer: 'return=representation'
+            prefer: 'resolution=ignore-duplicates,return=representation'
           });
       return rows.length > 0;
     } catch (error) {
