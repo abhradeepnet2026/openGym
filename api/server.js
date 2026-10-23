@@ -39,8 +39,8 @@ import { excusedOn, nudgeFor, nudgeWindowOpen, toneOf } from './nudge.js';
 
 const PORT = +(process.env.PORT || 3000);
 const DATA = process.env.DATA_DIR || '/data';
-const RP_ID = process.env.RP_ID || 'localhost';
-const ORIGIN = process.env.ORIGIN || 'http://localhost:8080';
+const RP_ID = process.env.RP_ID || process.env.RENDER_EXTERNAL_HOSTNAME || 'localhost';
+const ORIGIN = process.env.ORIGIN || process.env.RENDER_EXTERNAL_URL || 'http://localhost:8080';
 const RP_NAME = process.env.RP_NAME || 'openGym';
 // Admin dashboard (issue): admins are matched by uid (or the admin flag FIRST_USER_ADMIN sets);
 // INVITE_ONLY gates new signups behind a code the admin generates. Off by default, so a fresh
@@ -2939,7 +2939,63 @@ const server = http.createServer(async (req, res) => {
   const mm = /^\/api\/media\/([0-9a-f]{64})$/.exec(url.pathname);
   if (mm) { key = req.method + ' /api/media/{hash}'; req.mediaHash = mm[1]; }
   const handler = routes[key];
-  if (!handler) return json(res, 404, { error: 'not found' });
+  if (!handler) {
+    // Optional same-origin web hosting for Docker-free deployments. The same Node process
+    // serves the built Vite app and the API, preserving passkey origin checks and session cookies.
+    // Leave WEB_ROOT unset for the API-only container used by existing deployments.
+    if (!url.pathname.startsWith('/api/') && !url.pathname.startsWith('/api')) {
+      const webRoot = process.env.WEB_ROOT ? path.resolve(process.env.WEB_ROOT) : '';
+      const mediaRoot = process.env.CATALOGUE_MEDIA_ROOT ? path.resolve(process.env.CATALOGUE_MEDIA_ROOT) : '';
+      let root = webRoot;
+      let relative = '';
+      const mediaMatch = /^\/exercise-media\/(still|clip)\/([^/]+)$/.exec(url.pathname);
+      if (mediaMatch && mediaRoot) {
+        root = path.resolve(mediaRoot, mediaMatch[1]);
+        try { relative = decodeURIComponent(mediaMatch[2]); } catch { return json(res, 400, { error: 'bad request' }); }
+        if (!/^\d{4,5}\.(?:webp|mp4)$/.test(relative) ||
+            (mediaMatch[1] === 'still' && !relative.endsWith('.webp')) ||
+            (mediaMatch[1] === 'clip' && !relative.endsWith('.mp4'))) {
+          return json(res, 404, { error: 'not found' });
+        }
+      } else if (webRoot) {
+        try { relative = decodeURIComponent(url.pathname.slice(1)); } catch { return json(res, 400, { error: 'bad request' }); }
+        if (!relative || url.pathname.endsWith('/')) relative = 'index.html';
+      }
+      if (root && relative && !relative.includes('\\0')) {
+        const file = path.resolve(root, relative);
+        if (file.startsWith(root + path.sep) || file === path.join(root, 'index.html')) {
+          try {
+            const stat = fs.statSync(file);
+            if (stat.isFile()) {
+              const ext = path.extname(file).toLowerCase();
+              const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
+                '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
+                '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml',
+                '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg',
+                '.jpeg': 'image/jpeg', '.ico': 'image/x-icon', '.woff2': 'font/woff2',
+                '.mp4': 'video/mp4', '.webmanifest': 'application/manifest+json' };
+              res.writeHead(200, { 'Content-Type': types[ext] || 'application/octet-stream',
+                'Content-Length': stat.size, 'X-Content-Type-Options': 'nosniff',
+                ...(ext === '.html' ? { 'Cache-Control': 'no-cache' } : { 'Cache-Control': 'public, max-age=31536000, immutable' }) });
+              if (req.method === 'HEAD') return res.end();
+              return fs.createReadStream(file).pipe(res);
+            }
+          } catch (e) { if (e.code !== 'ENOENT' && e.code !== 'ENOTDIR') return json(res, 500, { error: 'web asset unavailable' }); }
+        }
+      }
+      if (webRoot && (url.pathname === '/' || !path.extname(url.pathname))) {
+        const index = path.join(webRoot, 'index.html');
+        try {
+          const stat = fs.statSync(index);
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': stat.size,
+            'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' });
+          if (req.method === 'HEAD') return res.end();
+          return fs.createReadStream(index).pipe(res);
+        } catch { /* fall through to the JSON 404 below */ }
+      }
+    }
+    return json(res, 404, { error: 'not found' });
+  }
   if (!csrfOk(req, key)) {
     // A Bearer that does not verify and no cookie beside it: nothing ambient is in play, the caller
     // is simply not signed in. That is the paired app once its token is revoked or expired, and it
