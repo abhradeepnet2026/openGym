@@ -183,18 +183,38 @@ export default function Plan() {
         const lines = planText.split(/\r?\n/).map(x => x.trim()).filter(Boolean)
         const routines = []; let current = null; const unknown = []
         const known = Object.entries(EXIDX)
+        const normalizeName = value => String(value || '').toLowerCase()
+          .replace(/\([^)]*\)/g, ' ')
+          .replace(/\b(barbell|dumbbell|db|bb|machine|cable|smith machine|seated|standing|lying|incline|decline)\b/g, ' ')
+          .replace(/[^a-z0-9]+/g, ' ').trim().replace(/\s+/g, ' ')
+        const findExercise = name => {
+          const wanted = normalizeName(name)
+          return known.find(([id, e]) => [e?.name, e?.n, e?.id, id].some(label => normalizeName(label) === wanted))
+            || known.find(([id, e]) => {
+              const labels = [e?.name, e?.n].map(normalizeName).filter(Boolean)
+              return labels.some(label => label && (label.includes(wanted) || wanted.includes(label)) && Math.min(label.length, wanted.length) / Math.max(label.length, wanted.length) > 0.72)
+            })
+        }
         for (const line of lines) {
           const cleaned = line.replace(/^[-*•\d.)\s]+/, '').trim()
-          const match = cleaned.match(/^(.+?)(?:\s+[—–-]\s*|\s*[:,|]\s*)(?:(\d+)\s*[x×]\s*(\d+)(?:\s*[—–-]\s*(\d+(?:\.\d+)?)\s*(kg|kgs|lb|lbs)?)?)?$/i)
-          const name = (match ? match[1] : cleaned).replace(/\s*\([^)]*\)\s*$/, '').trim()
-          const exercise = known.find(([id, e]) => String(e?.name || e?.n || id).toLowerCase() === name.toLowerCase())
+          const setRep = cleaned.match(/\b(\d{1,2})\s*[x×]\s*(\d{1,3})\b/i)
+          const weight = cleaned.match(/(?:@|—|–|-|\s)(\d+(?:\.\d+)?)\s*(kg|kgs|lb|lbs)\b/i)
+          const name = cleaned
+            .replace(/\b\d{1,2}\s*[x×]\s*\d{1,3}\b/ig, ' ')
+            .replace(/(?:@|—|–|-|\s)\d+(?:\.\d+)?\s*(?:kg|kgs|lb|lbs)\b/ig, ' ')
+            .replace(/\b(?:sets?|reps?|repetitions?)\b/ig, ' ')
+            .replace(/[()[\]{}:;,|@—–-]/g, ' ').replace(/\s+/g, ' ').trim()
+          const exercise = findExercise(name)
           const looksLikeExercise = !!exercise || /\b(bench|squat|deadlift|press|row|curl|pulldown|pull.?up|push.?up|lunge|plank|raise|fly|extension|crunch|run|cycle|leg press|calf)\b/i.test(name)
-          if (!looksLikeExercise) { if (!current || current.ex.length) { current = { id: uid(), name: name.slice(0, 60), emoji: DEFAULT_GLYPH, ex: [] }; routines.push(current) } else if (current.name === t('Imported workout')) current.name = name.slice(0, 60); continue }
+          if (!looksLikeExercise) {
+            if (!current || current.ex.length) { current = { id: uid(), name: cleaned.slice(0, 60), emoji: DEFAULT_GLYPH, ex: [] }; routines.push(current) }
+            else if (current.name === t('Imported workout')) current.name = cleaned.slice(0, 60)
+            continue
+          }
           if (!current) { current = { id: uid(), name: t('Imported workout'), emoji: DEFAULT_GLYPH, ex: [] }; routines.push(current) }
           if (!exercise) { unknown.push(name); continue }
-          const rawSets = cleaned.match(/(\d+)\s*[x×]\s*(\d+)/i)
-          const weight = cleaned.match(/(\d+(?:\.\d+)?)\s*(kg|kgs|lb|lbs)\b/i)
-          current.ex.push({ id: exercise[0], sets: Math.max(1, Math.min(20, Number(rawSets?.[1] || 3))), reps: Math.max(1, Math.min(100, Number(rawSets?.[2] || 10))), ...(weight ? { weight: Number(weight[1]) } : {}) })
+          const reps = setRep ? Number(setRep[2]) : 10
+          current.ex.push({ id: exercise[0], sets: Math.max(1, Math.min(20, Number(setRep?.[1] || 3))), reps: Math.max(1, Math.min(100, reps)), ...(weight ? { weight: Number(weight[1]) } : {}) })
         }
         const usable = routines.filter(r => r.ex.length)
         if (!usable.length) { setPlanImportError(t('No recognised exercises found. Use exercise names from the openGym library and include routine headings.')); setPlanPreview(null); return }
