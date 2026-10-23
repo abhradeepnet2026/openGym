@@ -36,5 +36,3 @@ services:
         value: "1"
       - key: MEDIA_MIN_FREE_MB
         value: "64"
-      - key: OPENAI_API_KEY
-        sync: false
