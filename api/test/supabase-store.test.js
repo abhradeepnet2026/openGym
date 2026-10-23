@@ -81,11 +81,17 @@ test('does not leak database error bodies', async () => {
 });
 
 test('treats concurrent first writes as a clean conflict', async () => {
+  const preferences = [];
   const store = new SupabaseStore({
     url: 'https://example.supabase.co',
     secretKey: 'server-secret',
-    fetchImpl: async () => response(409, { message: 'duplicate key' })
+    fetchImpl: async (_url, options) => {
+      preferences.push(options.headers.Prefer);
+      return response(409, { message: 'duplicate key' });
+    }
   });
   assert.equal(await store.compareAndSwapInstance(0, { users: [] }), false);
   assert.equal(await store.compareAndSwapUserState('user-a', 0, { workouts: [] }), false);
+  assert.equal(preferences.length, 2);
+  assert.ok(preferences.every(value => value.includes('resolution=ignore-duplicates')));
 });
