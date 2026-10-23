@@ -2169,3 +2169,46 @@ button.wl-summary{width:100%;padding:0 0 10px;text-align:start;border-radius:var
   left:calc(-1 * var(--eb-l,0px));right:calc(-1 * var(--eb-r,0px));
   box-shadow:0 0 28px rgba(0,0,0,.28);
 }
+
+
+/* Personal gym refresh — charcoal surfaces, restrained acid-lime accent, cleaner depth. */
+:root {
+  --bg: #0b0e0b;
+  --bg-el: #111511;
+  --surface: #171d17;
+  --surface-2: #202820;
+  --surface-3: #2b352b;
+  --label: #f5f7f2;
+  --label-2: rgba(230, 238, 224, .68);
+  --label-3: rgba(230, 238, 224, .42);
+  --label-4: rgba(230, 238, 224, .24);
+  --sep: rgba(185, 207, 174, .14);
+  --sep-op: rgba(185, 207, 174, .09);
+  --acc: #c3f53c;
+  --acc-2: #9bc52a;
+  --on-acc: #11150b;
+  --r-sm: 10px;
+  --r: 14px;
+  --r-lg: 18px;
+  --r-xl: 24px;
+  --r-card: 18px;
+}
+
+html, body { background: var(--bg); }
+body { letter-spacing: -.012em; }
+::selection { background: color-mix(in srgb, var(--acc) 34%, transparent); color: var(--label); }
+:focus-visible { outline: 2px solid var(--acc); outline-offset: 3px; }
+button, [role="button"], input, select, textarea {
+  accent-color: var(--acc);
+}
+button, [role="button"] { -webkit-tap-highlight-color: transparent; }
+#app { background: var(--bg); }
+.page { background: var(--bg); }
+/* A little separation between cards without turning the interface into a grid of boxes. */
+.card, .card-like, .group-card {
+  border-color: var(--sep);
+}
+/* Reduced motion remains respected for accessibility. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
