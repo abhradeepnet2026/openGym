@@ -2212,3 +2212,69 @@ button, [role="button"] { -webkit-tap-highlight-color: transparent; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+
+/* Personal instance: polished strength-training interface */
+:root {
+  --bg: #0a0d0a;
+  --bg-el: #101410;
+  --surface: #171c17;
+  --surface-2: #222922;
+  --surface-3: #303a30;
+  --label: #f3f5ef;
+  --label-2: rgba(232, 239, 226, .70);
+  --label-3: rgba(232, 239, 226, .44);
+  --label-4: rgba(232, 239, 226, .25);
+  --sep: rgba(190, 210, 178, .13);
+  --sep-op: rgba(190, 210, 178, .08);
+  --acc: #c7f36b;
+  --acc-2: #9fc74d;
+  --on-acc: #11150d;
+  --acc-soft: rgba(199, 243, 107, .11);
+  --acc-line: rgba(199, 243, 107, .28);
+  --r-sm: 10px;
+  --r: 14px;
+  --r-lg: 19px;
+  --r-xl: 26px;
+  --r-card: 19px;
+}
+html { background: var(--bg); color-scheme: dark; }
+body {
+  background:
+    radial-gradient(ellipse at 90% -12%, rgba(154, 198, 82, .075), transparent 34rem),
+    var(--bg);
+  color: var(--label);
+  -webkit-font-smoothing: antialiased;
+}
+.card, .card-like, .group-card {
+  background-color: color-mix(in srgb, var(--surface) 94%, transparent);
+  border-color: var(--sep);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, .10);
+}
+button, [role="button"], input, select, textarea {
+  font: inherit;
+}
+button, [role="button"] { transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease; }
+button:active, [role="button"]:active { transform: scale(.985); }
+#tabbar {
+  background: color-mix(in srgb, var(--bg-el) 91%, transparent);
+  border-top-color: var(--sep);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+}
+#tabbar .start .cir {
+  background: var(--acc);
+  color: var(--on-acc);
+  box-shadow: 0 0 0 5px var(--acc-soft);
+}
+a { color: var(--acc); }
+input, textarea, select {
+  border-color: var(--sep);
+}
+:focus-visible { outline-color: var(--acc); }
+@media (min-width: 760px) {
+  .page { max-width: 980px; margin-inline: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  button, [role="button"] { transition: none; }
+}
