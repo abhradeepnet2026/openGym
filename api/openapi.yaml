@@ -782,6 +782,7 @@ paths:
 
   /api/register/password:
     post:
+      # Runtime also returns user-limit when MAX_USERS has been reached.
       tags: [password]
       operationId: registerPassword
       summary: Create a profile with a name and password
