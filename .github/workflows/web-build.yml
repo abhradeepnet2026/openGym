@@ -1,0 +1,39 @@
+name: Docker-free web build check
+
+on:
+  pull_request:
+    paths:
+      - 'frontend/**'
+      - 'supabase/**'
+      - '.github/workflows/web-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Run frontend tests
+        working-directory: frontend
+        run: npm test
+      - name: Build web bundle
+        working-directory: frontend
+        run: npm run build
+      - name: Check locale consistency
+        working-directory: frontend
+        run: node scripts/check-locales.mjs
