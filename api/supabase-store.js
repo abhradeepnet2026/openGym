@@ -105,17 +105,23 @@ export class SupabaseStore {
     if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) throw new TypeError('Invalid expected revision');
     if (!state || typeof state !== 'object' || Array.isArray(state)) throw new TypeError('State must be an object');
     const updatedAt = new Date().toISOString();
-    const rows = expectedRevision === 0
-      ? await this.request('gym_user_state', { on_conflict: 'user_id' }, {
-          method: 'POST',
-          body: { user_id: userId, state, revision: 1, updated_at: updatedAt },
-          prefer: 'return=representation'
-        })
-      : await this.request('gym_user_state', { user_id: 'eq.' + userId, revision: 'eq.' + expectedRevision }, {
-          method: 'PATCH',
-          body: { state, revision: expectedRevision + 1, updated_at: updatedAt },
-          prefer: 'return=representation'
-        });
-    return rows.length > 0;
+    try {
+      const rows = expectedRevision === 0
+        ? await this.request('gym_user_state', { on_conflict: 'user_id' }, {
+            method: 'POST',
+            body: { user_id: userId, state, revision: 1, updated_at: updatedAt },
+            prefer: 'return=representation'
+          })
+        : await this.request('gym_user_state', { user_id: 'eq.' + userId, revision: 'eq.' + expectedRevision }, {
+            method: 'PATCH',
+            body: { state, revision: expectedRevision + 1, updated_at: updatedAt },
+            prefer: 'return=representation'
+          });
+      return rows.length > 0;
+    } catch (error) {
+      // A competing first insert is an expected compare-and-swap miss, not an API failure.
+      if (error instanceof SupabaseStoreError && error.status === 409) return false;
+      throw error;
+    }
   }
 }
