@@ -75,6 +75,7 @@ export class SupabaseStore {
       updated_at: new Date().toISOString()
     };
     try {
+      try {
       const rows = expectedRevision === 0
         ? await this.request('gym_instance_store', { on_conflict: 'id' }, {
             method: 'POST', body: row, prefer: 'return=representation'
@@ -84,6 +85,10 @@ export class SupabaseStore {
             prefer: 'return=representation'
           });
       return rows.length > 0;
+    } catch (error) {
+      if (error?.status === 409) return false;
+      throw error;
+    }
     } catch (error) {
       if (error?.status === 409) return false;
       throw error;
