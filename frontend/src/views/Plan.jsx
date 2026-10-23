@@ -180,20 +180,20 @@ export default function Plan() {
       <p className="muted">{t('Paste a plan from a website, document, notes, or AI. Use routine headings and exercise lines such as “Bench Press — 3 x 8 — 40 kg”. Review the preview before adding it.')}</p>
       <textarea value={planText} onChange={e => { setPlanText(e.target.value); setPlanPreview(null); setPlanImportError('') }} rows={8} placeholder={'Push Day\nBench Press — 3 x 8 — 40 kg\nIncline Dumbbell Press — 3 x 10\n\nPull Day\nLat Pulldown — 3 x 12'} style={{ width: '100%', resize: 'vertical', boxSizing: 'border-box' }} />
       <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: 'wrap' }}><Button onClick={() => {
-        const lines = planText.split(/\\r?\\n/).map(x => x.trim()).filter(Boolean)
+        const lines = planText.split(/\r?\n/).map(x => x.trim()).filter(Boolean)
         const routines = []; let current = null; const unknown = []
         const known = Object.entries(EXIDX)
         for (const line of lines) {
-          const cleaned = line.replace(/^[-*•\\d.)\\s]+/, '').trim()
-          const match = cleaned.match(/^(.+?)(?:\\s+[—–-]\\s*|\\s*[:,|]\\s*)(?:(\\d+)\\s*[x×]\\s*(\\d+)(?:\\s*[—–-]\\s*(\\d+(?:\\.\\d+)?)\\s*(kg|kgs|lb|lbs)?)?)?$/i)
-          const name = (match ? match[1] : cleaned).replace(/\\s*\\([^)]*\\)\\s*$/, '').trim()
+          const cleaned = line.replace(/^[-*•\d.)\s]+/, '').trim()
+          const match = cleaned.match(/^(.+?)(?:\s+[—–-]\s*|\s*[:,|]\s*)(?:(\d+)\s*[x×]\s*(\d+)(?:\s*[—–-]\s*(\d+(?:\.\d+)?)\s*(kg|kgs|lb|lbs)?)?)?$/i)
+          const name = (match ? match[1] : cleaned).replace(/\s*\([^)]*\)\s*$/, '').trim()
           const exercise = known.find(([id, e]) => String(e?.name || e?.n || id).toLowerCase() === name.toLowerCase())
-          const looksLikeExercise = !!exercise || /\\b(bench|squat|deadlift|press|row|curl|pulldown|pull.?up|push.?up|lunge|plank|raise|fly|extension|crunch|run|cycle|leg press|calf)\\b/i.test(name)
+          const looksLikeExercise = !!exercise || /\b(bench|squat|deadlift|press|row|curl|pulldown|pull.?up|push.?up|lunge|plank|raise|fly|extension|crunch|run|cycle|leg press|calf)\b/i.test(name)
           if (!looksLikeExercise) { if (!current || current.ex.length) { current = { id: uid(), name: name.slice(0, 60), emoji: DEFAULT_GLYPH, ex: [] }; routines.push(current) } else if (current.name === t('Imported workout')) current.name = name.slice(0, 60); continue }
           if (!current) { current = { id: uid(), name: t('Imported workout'), emoji: DEFAULT_GLYPH, ex: [] }; routines.push(current) }
           if (!exercise) { unknown.push(name); continue }
-          const rawSets = cleaned.match(/(\\d+)\\s*[x×]\\s*(\\d+)/i)
-          const weight = cleaned.match(/(\\d+(?:\\.\\d+)?)\\s*(kg|kgs|lb|lbs)\\b/i)
+          const rawSets = cleaned.match(/(\d+)\s*[x×]\s*(\d+)/i)
+          const weight = cleaned.match(/(\d+(?:\.\d+)?)\s*(kg|kgs|lb|lbs)\b/i)
           current.ex.push({ id: exercise[0], sets: Math.max(1, Math.min(20, Number(rawSets?.[1] || 3))), reps: Math.max(1, Math.min(100, Number(rawSets?.[2] || 10))), ...(weight ? { weight: Number(weight[1]) } : {}) })
         }
         const usable = routines.filter(r => r.ex.length)
