@@ -47,6 +47,8 @@ const RP_NAME = process.env.RP_NAME || 'openGym';
 // self-hosted instance stays open.
 const ADMIN_UIDS = (process.env.ADMIN_UIDS || '').split(',').map(s => s.trim()).filter(Boolean);
 const INVITE_ONLY = /^(1|true|yes|on)$/i.test(process.env.INVITE_ONLY || '');
+const MAX_USERS = Math.max(0, Math.floor(Number(process.env.MAX_USERS || 0)) || 0);
+const userLimitReached = () => MAX_USERS > 0 && db.users.length >= MAX_USERS;
 // The first profile made on an instance with no profiles at all becomes its admin (#328), so a
 // fresh install has someone who can open the admin dashboard without editing ADMIN_UIDS and
 // restarting. Stored on the user record (user.admin), which isAdmin already honours. It is
@@ -1423,6 +1425,7 @@ const passwordRoutes = {
   // For browsers that cannot make a passkey at all: plain http on a LAN address, some Firefox
   // setups. Same invite rules as /api/register/*, checked again and burned after the hash.
   'POST /api/register/password': async (req, res) => {
+    if (userLimitReached()) return json(res, 403, { error: 'this instance has reached its account limit', code: 'user-limit' });
     const body = await readBody(req);
     const name = text(body.name).trim().slice(0, 40);
     if (!name) return json(res, 400, { error: 'name required', code: 'missing' });
@@ -1473,6 +1476,7 @@ const passwordRoutes = {
     }
     // No await from here to the push: nothing can take the address between this check and it.
     if (email && emailTaken(email)) return emailRefused();
+    if (userLimitReached()) return json(res, 403, { error: 'this instance has reached its account limit', code: 'user-limit' });
     const created = new Date().toISOString();
     const user = { id: crypto.randomBytes(12).toString('base64url'), name, created, pw: { h, set: created }, ...(email ? { email } : {}) };
     if (inv) { user.invitedBy = inv.code; inv.usedBy = user.id; inv.usedAt = created; }
@@ -2129,6 +2133,7 @@ const routes = {
   },
 
   'POST /api/register/options': async (req, res) => {
+    if (userLimitReached()) return json(res, 403, { error: 'this instance has reached its account limit', code: 'user-limit' });
     const body = await readBody(req);
     const name = text(body.name).trim().slice(0, 40);
     if (!name) return json(res, 400, { error: 'name required' });
@@ -2175,6 +2180,7 @@ const routes = {
       auditFail(req, 'auth.register.fail', { ok: false, name: c.name, msg: 'not-verified' });
       return json(res, 400, { error: 'not verified' });
     }
+    if (userLimitReached()) return json(res, 403, { error: 'this instance has reached its account limit', code: 'user-limit' });
     const { credential } = verification.registrationInfo;
     if (db.creds.find(x => x.id === credential.id)) {
       audit(req, 'auth.register.fail', { ok: false, name: c.name, msg: 'credential-exists' });
