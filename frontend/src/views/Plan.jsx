@@ -162,7 +162,17 @@ export default function Plan() {
       ],
     })
   }
-  const pickFile = ev => { const f = ev.target.files[0]; ev.target.value = ''; importPlanFile(f) }
+  const pickFile = ev => {
+    const f = ev.target.files[0]; ev.target.value = ''
+    if (!f) return
+    if (/\.json$/i.test(f.name) || f.type === 'application/json') { importPlanFile(f); return }
+    if (!/\.(txt|md|markdown)$/i.test(f.name) && !/^text\//i.test(f.type)) {
+      useUI.getState().toast(t('Choose a text, Markdown, or openGym JSON plan file.')); return
+    }
+    f.text().then(text => {
+      setPlanText(text); setPlanPreview(null); setPlanImportError(''); setPasteOpen(true)
+    }).catch(() => useUI.getState().toast(t('Could not read that file.')))
+  }
 
   const mode = scheduleModeOf(S)
 
@@ -174,7 +184,7 @@ export default function Plan() {
         <button className="iconbtn" onClick={openMenu} aria-label={t('Plan options')} title={t('Plan options')}><Icon name="share" /></button>
       </div>
     </div>
-    <input ref={fileRef} type="file" accept="application/json,.json" onChange={pickFile} hidden />
+    <input ref={fileRef} type="file" accept="application/json,.json,text/plain,.txt,text/markdown,.md,.markdown" onChange={pickFile} hidden />
     {pasteOpen && <section className="card" style={{ margin: '12px 0', padding: 16 }} aria-label={t('Paste a workout plan')}>
       <div className="row between"><h2 style={{ margin: 0 }}>{t('Import workout plan')}</h2><button className="iconbtn" onClick={() => { setPasteOpen(false); setPlanPreview(null) }} aria-label={t('Close')}><Icon name="x" /></button></div>
       <p className="muted">{t('Paste a plan from a website, document, notes, or AI. Use routine headings and exercise lines such as “Bench Press — 3 x 8 — 40 kg”. Review the preview before adding it.')}</p>
