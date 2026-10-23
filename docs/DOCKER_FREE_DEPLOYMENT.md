@@ -23,6 +23,7 @@ The blueprint defaults `ORIGIN` to Render's service URL and `RP_ID` to its hostn
 - `DATA_DIR=/var/data`: stores the existing file-backed database, user state, session secret and uploaded media on the persistent disk.
 - `INVITE_ONLY=1`, `ALLOW_GUEST=0`: require accounts and invite codes.
 - `FIRST_USER_ADMIN=1`: makes the first registered account owner/admin on a fresh install.
+- `MAX_USERS=3`: enforces a hard cap of three registered accounts across passkey and password signup.
 - `PASSWORD_LOGIN=1`: enables the existing optional password login alongside passkeys.
 
 ## Supabase migration status
