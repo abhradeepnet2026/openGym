@@ -2944,6 +2944,7 @@ const server = http.createServer(async (req, res) => {
     // serves the built Vite app and the API, preserving passkey origin checks and session cookies.
     // Leave WEB_ROOT unset for the API-only container used by existing deployments.
     if (!url.pathname.startsWith('/api/') && !url.pathname.startsWith('/api')) {
+      if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 404, { error: 'not found' });
       const webRoot = process.env.WEB_ROOT ? path.resolve(process.env.WEB_ROOT) : '';
       const mediaRoot = process.env.CATALOGUE_MEDIA_ROOT ? path.resolve(process.env.CATALOGUE_MEDIA_ROOT) : '';
       let root = webRoot;
