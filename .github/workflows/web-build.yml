@@ -1,10 +1,13 @@
-name: Docker-free web build check
+name: Docker-free full-stack checks
 
 on:
   pull_request:
     paths:
       - 'frontend/**'
-      - 'supabase/**'
+      - 'api/**'
+      - 'catalogue/media/**'
+      - 'render.yaml'
+      - '.node-version'
       - '.github/workflows/web-build.yml'
   workflow_dispatch:
 
@@ -12,7 +15,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: web-build-${{ github.ref }}
+  group: docker-free-checks-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -37,3 +40,21 @@ jobs:
       - name: Check locale consistency
         working-directory: frontend
         run: node scripts/check-locales.mjs
+
+  api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - name: Install API dependencies without optional AI runtimes
+        working-directory: api
+        run: npm ci --omit=optional
+      - name: Run API and Coach tests
+        working-directory: api
+        run: npm test
+      - name: Verify API server JavaScript syntax
+        run: node --check api/server.js
