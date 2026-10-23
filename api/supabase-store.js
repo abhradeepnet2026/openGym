@@ -74,15 +74,20 @@ export class SupabaseStore {
       revision: expectedRevision + 1,
       updated_at: new Date().toISOString()
     };
-    const rows = expectedRevision === 0
-      ? await this.request('gym_instance_store', { on_conflict: 'id' }, {
-          method: 'POST', body: row, prefer: 'return=representation'
-        })
-      : await this.request('gym_instance_store', { id: 'eq.1', revision: 'eq.' + expectedRevision }, {
-          method: 'PATCH', body: { payload, revision: expectedRevision + 1, updated_at: row.updated_at },
-          prefer: 'return=representation'
-        });
-    return rows.length > 0;
+    try {
+      const rows = expectedRevision === 0
+        ? await this.request('gym_instance_store', { on_conflict: 'id' }, {
+            method: 'POST', body: row, prefer: 'return=representation'
+          })
+        : await this.request('gym_instance_store', { id: 'eq.1', revision: 'eq.' + expectedRevision }, {
+            method: 'PATCH', body: { payload, revision: expectedRevision + 1, updated_at: row.updated_at },
+            prefer: 'return=representation'
+          });
+      return rows.length > 0;
+    } catch (error) {
+      if (error instanceof SupabaseStoreError && error.status === 409) return false;
+      throw error;
+    }
   }
 
   async getUserState(userId) {
