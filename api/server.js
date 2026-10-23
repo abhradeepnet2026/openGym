@@ -182,6 +182,21 @@ function saveDb() {
 // Flushed before and after the rename (durable.js): a host reset must not bring back the file
 // the client was told had been replaced.
 function atomicWrite(file, content, mode) { durableWrite(file, content, mode); }
+
+// A fresh invite-only instance needs one way to create its first owner. On a fresh install,
+// mint one high-entropy bootstrap invite and print it only to the private service logs. The
+// first successful registration claims owner/admin; later accounts must use admin-issued invites.
+// Reprinting an unused code on restart lets the operator recover it without opening registration.
+if (INVITE_ONLY && FIRST_USER_ADMIN && db.users.length === 0) {
+  let bootstrap = db.invites.find(i => i.note === 'First-owner bootstrap' && !i.usedBy && !i.revoked);
+  if (!bootstrap) {
+    bootstrap = { code: crypto.randomBytes(8).toString('hex').toUpperCase(),
+      note: 'First-owner bootstrap', createdBy: null, created: new Date().toISOString() };
+    db.invites.push(bootstrap);
+    saveDb();
+  }
+  console.warn('openGym first-owner invite code (private service logs): ' + bootstrap.code);
+}
 // How many earlier write ids a document keeps (`_wids`, see PUT /api/data): a device that last
 // synced more writes ago than this merges on its next pull instead of taking the server's copy.
 const WID_KEEP = 50;
