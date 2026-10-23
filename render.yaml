@@ -26,6 +26,8 @@ services:
         value: "1"
       - key: FIRST_USER_ADMIN
         value: "1"
+      - key: MAX_USERS
+        value: "3"
       - key: ALLOW_GUEST
         value: "0"
       - key: PASSWORD_LOGIN
