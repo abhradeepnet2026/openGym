@@ -2,85 +2,88 @@
 
 Tracks evidence for `docs/PRD_PERSONAL_SUPABASE_DEPLOYMENT.md`. Do not mark a phase complete without a test result or verified deployment evidence.
 
-## Current phase: 1 — baseline audit
+## Current phase: 2 — persistence adapter and runtime decision
 
 - [x] Confirm working branch and current commit.
 - [x] Confirm Supabase project is active.
-- [x] Confirm no app tables exist in `public`; Supabase's built-in `storage.*` tables are platform internals, not app schema.
-- [x] Confirm current API package dependencies and persistence patterns.
-- [x] Confirm existing plan-paste/import feature is present in the working branch.
-- [ ] Inventory every route and its Node-only dependencies.
-- [ ] Capture current baseline test results and live health check.
+- [x] Confirm no application tables exist in `public`; built-in `storage.*` tables are platform internals.
+- [x] Audit the API's core filesystem persistence and Node-only dependencies.
+- [x] Confirm workout-plan paste/import exists in the working branch.
+- [x] Create PRD, implementation checklist, and architecture decision record.
+- [x] Add a proposed custom-auth-compatible Supabase schema migration (not applied).
+- [x] Add a server-only revision-aware PostgREST adapter and mocked unit tests (not wired into production API).
+- [ ] Confirm adapter tests pass in CI.
+- [ ] Complete route-by-route runtime inventory and decide a deployable free Node-compatible host.
+- [ ] Capture a fresh live health check and current full-suite baseline.
 
 ### Verified findings (2026-10-23)
 
 - Branch: `personal-fitness-fullstack`
-- Branch HEAD at audit: `31cfefe0d9306023259780da7c562ddfa8ec66b2`
+- Latest known implementation commit when this checklist was updated: `e60823ba22db1ada0eb78c5cab8dfbc263cdc059`
 - PR: https://github.com/abhradeepnet2026/openGym/pull/1 (open; do not merge without authorization)
 - Live temporary URL: https://opengym-personal.onrender.com
 - Supabase project ref: `zbohwbzqkqlhahgjvvkn`; status was previously verified `ACTIVE_HEALTHY`.
-- API is a long-lived Node HTTP server, not a collection of request handlers. Dependencies include `@simplewebauthn/server`, `web-push`, optional Claude Agent SDK, Node crypto/fs/http/https/dns/net, and child-process execution in Coach adapters.
-- Persistent local files include:
-  - `db.json`: user records, passkey credentials, push subscriptions, invites, device links and associated account metadata.
-  - `secret`: signing secret for session cookies.
-  - `state-<uid>.json`: per-user synced workout/app state.
-  - `vapid.json`: push notification keys.
-  - `audit.log`, uploads/media, and Coach config/job files.
-- The Coach system invokes provider CLIs using child processes and assumes a local filesystem. A Deno Edge Function cannot host the current API unchanged.
-- Existing migration `supabase/migrations/20261023_personal_instance.sql` assumes Supabase Auth users (`auth.users`) and is **not compatible as-is** with the current custom passkey/password auth records. It has not been applied.
-- No app schema migration or storage bucket policy has been applied to production during this audit.
-- Do not expose service-role/secret keys in the frontend. The project URL and publishable key are not secrets; the secret key must remain server-side.
-- Existing Render `DATA_DIR=/tmp/opengym-data` is ephemeral. Do not rely on it for durable user data.
+- API is a long-lived Node HTTP server. It uses `@simplewebauthn/server`, `web-push`, optional Claude Agent SDK, Node crypto/fs/http/https/dns/net, and child-process execution in Coach adapters.
+- Existing local persistence includes `db.json` (user records, passkeys, push subscriptions, invites and device links), `secret` (session-signing secret), per-user state JSON files, `vapid.json`, audit log, uploads/media, and Coach config/job files.
+- Coach provider execution uses child processes and filesystem-backed job/config data; Supabase Edge Functions cannot run this API unchanged.
+- Existing `supabase/migrations/20261023_personal_instance.sql` assumes Supabase Auth identities and is not compatible as-is with the app's custom passkey/password identity model. It remains unapplied.
+- New `supabase/migrations/20261023_supabase_persistence.sql` defines server-only JSONB instance/state tables, audit/media metadata, and a private media bucket. It has **not** been applied to the live project.
+- New `api/supabase-store.js` provides revision-aware REST reads and compare-and-swap writes for the proposed tables. It is **not wired into `api/server.js`** and therefore does not yet make production data persistent.
+- New `api/test/supabase-store.test.js` covers request authentication, empty state, revision filtering, conflicts, validation, and safe error messages. CI is pending at the time of writing.
+- Do not expose the Supabase server secret/service-role key in frontend code.
+- Render `DATA_DIR=/tmp/opengym-data` is ephemeral; do not treat it as durable storage.
 
 ## Architecture decision gate
 
-Before writing a production schema, choose and document one of these paths:
+Preferred direction is to preserve the current custom WebAuthn/password auth model initially, use Supabase Postgres + private Storage for durability, and run the API on a free Node-compatible runtime. The exact runtime is not selected until its current free-tier constraints and this API's compatibility are verified. Render stays as a temporary fallback until cutover succeeds.
 
-1. **Keep Node API on a free compatible host; use Supabase for Postgres + private Storage.** Lowest rewrite risk. Confirm an actually available free runtime and its limits before choosing it.
-2. **Port the API to Supabase Edge Functions.** This is a substantial rewrite: WebAuthn, custom cookie/session logic, push, streaming media, Node filesystem use, and child-process-based Coach jobs all need compatible replacements. Feature parity must be tested.
+Do not apply the schema or switch production writes until the adapter is integrated, schema is reviewed, integration tests pass, and a rollback/export path exists.
 
-Do not apply the current `auth.users` migration until the auth strategy is explicitly decided. Do not create an app schema based on assumptions about user IDs or token ownership.
+## Phase 2 — architecture and adapter
 
-## Phase 2 — architecture decision
-
-- [ ] Compare free Node-compatible hosting options and verify their current free-tier restrictions.
-- [ ] Decide whether existing custom WebAuthn auth remains or is migrated to Supabase Auth.
-- [ ] Map every API route and background job to its target runtime.
-- [ ] Identify feature parity gaps, especially Coach, Web Push, passkeys, and media streaming.
-- [ ] Update PRD architecture section if decision changes.
+- [x] Choose the initial persistence model compatible with existing custom auth records.
+- [x] Add revision-aware adapter interface for instance and per-user state.
+- [x] Add mocked unit tests for the adapter.
+- [ ] Verify CI tests.
+- [ ] Compare free Node-compatible hosting options and verify current limitations.
+- [ ] Inventory all routes and background jobs and identify Node-only requirements.
+- [ ] Decide how signing secrets, VAPID keys, audit logs, Coach jobs/config, and uploads will be persisted.
+- [ ] Update architecture record with the runtime decision and evidence.
 
 ## Phase 3 — database and storage
 
-- [ ] Design schema based on the selected auth model (no assumed `auth.users` foreign keys).
-- [ ] Implement versioned migration and least-privilege grants/RLS.
-- [ ] Create private media bucket and verify owner-scoped access.
-- [ ] Add revision-aware writes and concurrency/conflict tests.
-- [ ] Verify tables and bucket policies with live test queries.
+- [x] Draft schema with no assumed `auth.users` foreign keys.
+- [x] Draft least-privilege grants/RLS and a private media bucket in a versioned migration.
+- [ ] Review migration against Supabase schema and storage API.
+- [ ] Apply migration only after review and adapter integration tests.
+- [ ] Add integration tests against a non-production/test record.
+- [ ] Implement private Supabase Storage adapter with per-user ownership checks.
+- [ ] Verify revision conflict behaviour and database/storage policies with live test queries.
 - [ ] Document export/backup and rollback.
 
 ## Phase 4 — backend, frontend, deployment
 
-- [ ] Implement Supabase persistence behind a testable storage interface.
-- [ ] Migrate secrets and session persistence safely.
-- [ ] Implement Supabase Storage adapter for user media.
-- [ ] Configure free frontend hosting and HTTPS.
-- [ ] Preserve passkey RP ID/origin and CSRF protections.
-- [ ] Add deployment secrets only in server-side environment.
-- [ ] Keep current deployment until new one passes acceptance tests.
+- [ ] Integrate async Supabase persistence safely; the current API assumes synchronous local-file reads/writes in many routes and cannot be switched by changing one helper.
+- [ ] Migrate signing secrets and VAPID keys safely.
+- [ ] Migrate audit logs and Coach config/jobs or document approved alternatives.
+- [ ] Configure a free Node-compatible API host and free HTTPS static frontend hosting.
+- [ ] Preserve passkey RP ID/origin, session, CSRF and origin protections.
+- [ ] Add secrets only to server-side environment.
+- [ ] Keep Render online until the replacement passes acceptance tests.
 
 ## Phase 5 — verification and cutover
 
 - [ ] Existing API and frontend tests pass.
-- [ ] Sign-up/login, session, invites, 3-user limit and owner/admin flow pass.
+- [ ] Sign-up/login, session, invites, three-user limit and owner/admin flow pass.
 - [ ] Workout write/read and cross-device sync pass.
 - [ ] Cold start/redeploy persistence passes.
 - [ ] Cross-user data and media isolation tests pass.
-- [ ] Import/paste, admin, Coach, notifications and media tests pass or documented alternatives are approved.
+- [ ] Import/paste, admin, Coach, notifications and media tests pass or approved alternatives are documented.
 - [ ] Live health check and browser end-to-end tests pass.
 - [ ] Export/rollback plan verified.
-- [ ] User informed of any remaining manual actions before cutover.
+- [ ] Notify user of any required manual action before cutover.
 - [ ] Remove Render only after successful verified cutover.
 
 ## User actions currently required
 
-None for the audit/PRD phase. If a hosting provider or dashboard authorization requires user action, request only the specific required step and do not claim it was completed.
+None at this stage. The PR's upstream CLA workflow still fails independently due to the repository's CLA setup; this does not block local branch implementation or deployment, but it may block merging into the upstream base branch.
