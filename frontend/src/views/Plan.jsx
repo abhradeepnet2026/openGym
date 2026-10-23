@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { EXIDX } from '../lib/exercises.js'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
@@ -130,6 +131,10 @@ export default function Plan() {
   const user = useStore(s => s.user)
   const fileRef = useRef(null)
   const [view, setViewState] = useState(readView)
+  const [pasteOpen, setPasteOpen] = useState(false)
+  const [planText, setPlanText] = useState('')
+  const [planPreview, setPlanPreview] = useState(null)
+  const [planImportError, setPlanImportError] = useState('')
   const setView = v => {
     setViewState(v)
     try { localStorage.setItem(PLAN_VIEW_KEY, v) } catch { /* private mode: the view just isn't remembered */ }
@@ -152,6 +157,7 @@ export default function Plan() {
         { icon: 'share', label: t('Export plan file'), sub: t('A small file a friend can import into their own openGym. Routines only, none of your workouts or weigh-ins.'), disabled: !has, onClick: exportPlanFile },
         { icon: 'note', label: t('Print / Save as PDF'), disabled: !has, onClick: printWholePlan },
         { icon: 'download', label: t('Import a plan file'), onClick: () => fileRef.current?.click() },
+        { icon: 'clipboard', label: t('Paste a workout plan'), sub: t('Convert text into editable routines'), onClick: () => { setPasteOpen(true); setPlanImportError(''); setPlanPreview(null) } },
         { icon: 'clipboard', label: t('Load starter plan'), onClick: starterPlanSheet },
       ],
     })
@@ -169,6 +175,35 @@ export default function Plan() {
       </div>
     </div>
     <input ref={fileRef} type="file" accept="application/json,.json" onChange={pickFile} hidden />
+    {pasteOpen && <section className="card" style={{ margin: '12px 0', padding: 16 }} aria-label={t('Paste a workout plan')}>
+      <div className="row between"><h2 style={{ margin: 0 }}>{t('Import workout plan')}</h2><button className="iconbtn" onClick={() => { setPasteOpen(false); setPlanPreview(null) }} aria-label={t('Close')}><Icon name="x" /></button></div>
+      <p className="muted">{t('Paste a plan from a website, document, notes, or AI. Use routine headings and exercise lines such as “Bench Press — 3 x 8 — 40 kg”. Review the preview before adding it.')}</p>
+      <textarea value={planText} onChange={e => { setPlanText(e.target.value); setPlanPreview(null); setPlanImportError('') }} rows={8} placeholder={'Push Day\nBench Press — 3 x 8 — 40 kg\nIncline Dumbbell Press — 3 x 10\n\nPull Day\nLat Pulldown — 3 x 12'} style={{ width: '100%', resize: 'vertical', boxSizing: 'border-box' }} />
+      <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: 'wrap' }}><Button onClick={() => {
+        const lines = planText.split(/\\r?\\n/).map(x => x.trim()).filter(Boolean)
+        const routines = []; let current = null; const unknown = []
+        const known = Object.entries(EXIDX)
+        for (const line of lines) {
+          const cleaned = line.replace(/^[-*•\\d.)\\s]+/, '').trim()
+          const match = cleaned.match(/^(.+?)(?:\\s+[—–-]\\s*|\\s*[:,|]\\s*)(?:(\\d+)\\s*[x×]\\s*(\\d+)(?:\\s*[—–-]\\s*(\\d+(?:\\.\\d+)?)\\s*(kg|kgs|lb|lbs)?)?)?$/i)
+          const name = (match ? match[1] : cleaned).replace(/\\s*\\([^)]*\\)\\s*$/, '').trim()
+          const exercise = known.find(([id, e]) => String(e?.name || e?.n || id).toLowerCase() === name.toLowerCase())
+          const looksLikeExercise = !!exercise || /\\b(bench|squat|deadlift|press|row|curl|pulldown|pull.?up|push.?up|lunge|plank|raise|fly|extension|crunch|run|cycle|leg press|calf)\\b/i.test(name)
+          if (!looksLikeExercise) { if (!current || current.ex.length) { current = { id: uid(), name: name.slice(0, 60), emoji: DEFAULT_GLYPH, ex: [] }; routines.push(current) } else if (current.name === t('Imported workout')) current.name = name.slice(0, 60); continue }
+          if (!current) { current = { id: uid(), name: t('Imported workout'), emoji: DEFAULT_GLYPH, ex: [] }; routines.push(current) }
+          if (!exercise) { unknown.push(name); continue }
+          const rawSets = cleaned.match(/(\\d+)\\s*[x×]\\s*(\\d+)/i)
+          const weight = cleaned.match(/(\\d+(?:\\.\\d+)?)\\s*(kg|kgs|lb|lbs)\\b/i)
+          current.ex.push({ id: exercise[0], sets: Math.max(1, Math.min(20, Number(rawSets?.[1] || 3))), reps: Math.max(1, Math.min(100, Number(rawSets?.[2] || 10))), ...(weight ? { weight: Number(weight[1]) } : {}) })
+        }
+        const usable = routines.filter(r => r.ex.length)
+        if (!usable.length) { setPlanImportError(t('No recognised exercises found. Use exercise names from the openGym library and include routine headings.')); setPlanPreview(null); return }
+        setPlanPreview({ routines: usable, unknown })
+      }} disabled={!planText.trim()}>{t('Preview plan')}</Button>
+      {planPreview && <Button onClick={() => { update(s => { for (const r of planPreview.routines) s.routines.push(r) }); setPasteOpen(false); setPlanText(''); setPlanPreview(null); setPlanImportError(''); setView('routines'); useUI.getState().toast(t('Imported {0} routines.', planPreview.routines.length)) }}>{t('Add {0} routines', planPreview.routines.length)}</Button>}</div>
+      {planImportError && <p role="alert" className="error">{planImportError}</p>}
+      {planPreview && <div style={{ marginTop: 12 }}><strong>{t('Preview')} · {planPreview.routines.length} {t('routines')}</strong>{planPreview.routines.map(r => <div key={r.id} style={{ padding: '8px 0', borderBottom: '1px solid var(--line, #333)' }}><strong>{r.name}</strong><div className="muted">{r.ex.map(e => { const ex = EXIDX[e.id]; return (ex?.name || ex?.n || e.id) + ' · ' + e.sets + ' × ' + e.reps + (e.weight ? ' · ' + e.weight : '') }).join(', ')}</div></div>)}{planPreview.unknown.length > 0 && <p className="muted">{t('Skipped exercises not matched to the library')}: {planPreview.unknown.join(', ')}</p>}</div>}
+    </section>}
     <Segmented className="plan-views" value={view} onChange={setView}
       options={[{ value: 'schedule', label: t('Schedule') }, { value: 'routines', label: t('Routines') }]} />
     {view === 'routines'
