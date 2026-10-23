@@ -12,14 +12,14 @@ Tracks evidence for `docs/PRD_PERSONAL_SUPABASE_DEPLOYMENT.md`. Do not mark a ph
 - [x] Create PRD, implementation checklist, and architecture decision record.
 - [x] Add a proposed custom-auth-compatible Supabase schema migration (not applied).
 - [x] Add a server-only revision-aware PostgREST adapter and mocked unit tests (not wired into production API).
-- [ ] Confirm adapter tests pass in CI.
+- [x] Confirm adapter tests pass in CI: current PR-head workflow run 40011429176 succeeded on commit `027757808d8c71dc7e1f4b670965362dd065cda5` (2026-10-23 19:26–19:29 UTC).
 - [ ] Complete route-by-route runtime inventory and decide a deployable free Node-compatible host.
-- [ ] Capture a fresh live health check and current full-suite baseline.
+- [ ] Capture a live health check and current full-suite baseline. (CI baseline is green; live endpoint probe was not verified in the latest session.)
 
 ### Verified findings (2026-10-23)
 
 - Branch: `personal-fitness-fullstack`
-- Latest known implementation commit when this checklist was updated: `e60823ba22db1ada0eb78c5cab8dfbc263cdc059`
+- Latest verified implementation commit: `027757808d8c71dc7e1f4b670965362dd065cda5`
 - PR: https://github.com/abhradeepnet2026/openGym/pull/1 (open; do not merge without authorization)
 - Live temporary URL: https://opengym-personal.onrender.com
 - Supabase project ref: `zbohwbzqkqlhahgjvvkn`; status was previously verified `ACTIVE_HEALTHY`.
@@ -29,7 +29,7 @@ Tracks evidence for `docs/PRD_PERSONAL_SUPABASE_DEPLOYMENT.md`. Do not mark a ph
 - Existing `supabase/migrations/20261023_personal_instance.sql` assumes Supabase Auth identities and is not compatible as-is with the app's custom passkey/password identity model. It remains unapplied.
 - New `supabase/migrations/20261023_supabase_persistence.sql` defines server-only JSONB instance/state tables, audit/media metadata, and a private media bucket. It has **not** been applied to the live project.
 - New `api/supabase-store.js` provides revision-aware REST reads and compare-and-swap writes for the proposed tables. It is **not wired into `api/server.js`** and therefore does not yet make production data persistent.
-- New `api/test/supabase-store.test.js` covers request authentication, empty state, revision filtering, conflicts, validation, and safe error messages. CI is pending at the time of writing.
+- New `api/test/supabase-store.test.js` covers request authentication, empty state, revision filtering, conflicts, validation, and safe error messages. The latest PR-head Tests workflow run (40011429176) passed, including the API test job and image checks.
 - Do not expose the Supabase server secret/service-role key in frontend code.
 - Render `DATA_DIR=/tmp/opengym-data` is ephemeral; do not treat it as durable storage.
 
